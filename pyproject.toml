@@ -41,6 +41,12 @@ mpv = ">=0.39.0"
 ytune = { cmd = "ytune", env = { LC_ALL = "C", LC_NUMERIC = "C" } }
 test = "pytest"
 
+[tool.pixi.feature.dev.tasks]
+lint = "ruff check src/ tests/"
+fmt = "ruff format src/ tests/"
+typecheck = "pyright"
+audit = "bandit -r src/ -ll"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
 dev = { features = ["dev"], solve-group = "default" }
@@ -52,3 +58,23 @@ ytune = { path = ".", editable = true }
 pytest = "*"
 pytest-asyncio = "*"
 pytest-mock = "*"
+
+[tool.pixi.feature.dev.pypi-dependencies]
+bandit = ">=1.9.4,<2"
+ruff = ">=0.15.6, <0.16"
+pyright = ">=1.1.408, <2"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "UP", "B", "I"]
+# E/F: pycodestyle + pyflakes, UP: pyupgrade (catches deprecated typing), B: bugbear, I: isort
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+include = ["src"]
+venvPath = ".pixi/envs"
+venv = "dev"

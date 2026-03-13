@@ -1,10 +1,17 @@
-import sqlite3
-import pytest
 from pathlib import Path
+
+import pytest
+
 from ytune.db import (
-    init_db, add_to_wishlist, get_wishlist, remove_from_wishlist,
-    add_to_history, get_history, get_forgotten_favourites
+    add_to_history,
+    add_to_wishlist,
+    get_forgotten_favourites,
+    get_history,
+    get_wishlist,
+    init_db,
+    remove_from_wishlist,
 )
+
 
 @pytest.fixture
 def db_conn():

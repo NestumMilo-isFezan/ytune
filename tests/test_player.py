@@ -1,21 +1,20 @@
-import pytest
-from unittest.mock import MagicMock
 from ytune.player import Player
 
+
 def test_get_stream_url_mocked(mocker):
-    # Mock mpv in the player module
-    mock_mpv_module = mocker.patch("ytune.player.mpv")
-    
-    # Mock YoutubeDL
+    mocker.patch("ytune.player.mpv")
+
     mock_ydl = mocker.patch("yt_dlp.YoutubeDL")
     mock_instance = mock_ydl.return_value.__enter__.return_value
     mock_instance.extract_info.return_value = {"url": "http://stream.url"}
-    
+
     player = Player()
     url = player.get_stream_url("vid123")
-    
+
     assert url == "http://stream.url"
-    mock_instance.extract_info.assert_called_with("https://www.youtube.com/watch?v=vid123", download=False)
+    mock_instance.extract_info.assert_called_with(
+        "https://www.youtube.com/watch?v=vid123", download=False
+    )
 
 def test_player_play_calls_mpv(mocker):
     # Mock mpv in the player module

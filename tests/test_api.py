@@ -1,7 +1,5 @@
-import pytest
-from unittest.mock import MagicMock
 from ytune.api import YTuneAPI
-from ytune.models import Track
+
 
 def test_search_tracks_mapping(mocker):
     # Mock YTMusic class

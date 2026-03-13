@@ -1,32 +1,37 @@
-import os
-import locale
-# Set environment variables directly to be sure libmpv sees them
-os.environ["LC_NUMERIC"] = "C"
-os.environ["LC_ALL"] = "C"
-try:
-    locale.setlocale(locale.LC_NUMERIC, 'C')
-    locale.setlocale(locale.LC_ALL, 'C')
-except Exception:
-    pass
+import logging
 
+from textual import on, work
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, ListView, ListItem, Label, Input, ProgressBar, ContentSwitcher
-from textual.containers import Horizontal, VerticalScroll, Container
 from textual.binding import Binding
-from textual import work, on
-import asyncio
-import threading
+from textual.containers import Container, Horizontal, VerticalScroll
+from textual.message import Message
+from textual.widgets import (
+    ContentSwitcher,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    ProgressBar,
+    Static,
+)
 
-from .api import YTuneAPI
-from .player import Player
-from .models import Track
 from . import db
+from .api import YTuneAPI
+from .models import Track
+from .player import Player
+
+logger = logging.getLogger(__name__)
+
 
 class TrackItem(ListItem):
     """Custom ListItem to hold track data."""
-    def __init__(self, track: Track):
+
+    def __init__(self, track: Track) -> None:
         super().__init__(Label(f"{track.title} - {track.artist}"))
         self.track_data = track
+
 
 class Sidebar(VerticalScroll):
     def compose(self) -> ComposeResult:
@@ -36,8 +41,9 @@ class Sidebar(VerticalScroll):
             ListItem(Label("🔍 Search"), id="nav-search"),
             ListItem(Label("❤️ Wishlist"), id="nav-wishlist"),
             ListItem(Label("🕒 History"), id="nav-history"),
-            id="sidebar-nav"
+            id="sidebar-nav",
         )
+
 
 class PlayerBar(Horizontal):
     def compose(self) -> ComposeResult:
@@ -45,7 +51,15 @@ class PlayerBar(Horizontal):
             yield Static("♪ Not Playing", id="track-info")
             yield ProgressBar(total=100, show_eta=False, id="track-progress")
 
+
 class YTune(App):
+    class SearchResultsReady(Message):
+        """Posted from the search worker when results are available."""
+
+        def __init__(self, results: list) -> None:
+            super().__init__()
+            self.results = results
+
     CSS = """
     Sidebar {
         width: 25;
@@ -112,16 +126,15 @@ class YTune(App):
         Binding("n", "skip_track", "Next"),
     ]
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.api = YTuneAPI()
         try:
-            self.player = Player()
+            self.player: Player | None = Player()
         except OSError:
             self.player = None
-        self.current_track = None
+        self.current_track: Track | None = None
         self.db_conn = None
-        self.queue = []
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -136,7 +149,11 @@ class YTune(App):
                         yield Label("Forgotten Favourites", classes="view-subtitle")
                         yield ListView(id="home-forgotten")
                     with VerticalScroll(id="view-search"):
-                        yield Input(placeholder="Search for songs...", classes="search-input", id="search-input")
+                        yield Input(
+                            placeholder="Search for songs...",
+                            classes="search-input",
+                            id="search-input",
+                        )
                         yield ListView(id="results-list")
                     with VerticalScroll(id="view-wishlist"):
                         yield Label("❤️ Your Wishlist", classes="view-title")
@@ -154,12 +171,13 @@ class YTune(App):
         self.set_interval(1.0, self.update_progress)
         self.fetch_home_content()
 
+    def on_unmount(self) -> None:
+        if self.db_conn:
+            self.db_conn.close()
+
     def handle_track_end(self) -> None:
         """Called when a track finishes playing."""
-        if self._thread_id == threading.get_ident():
-            self.action_skip_track()
-        else:
-            self.call_from_thread(self.action_skip_track)
+        self.call_from_thread(self.action_skip_track)
 
     def update_progress(self) -> None:
         if self.player and self.player.duration > 0:
@@ -171,7 +189,7 @@ class YTune(App):
         """Handle sidebar navigation."""
         nav_id = event.item.id
         switcher = self.query_one(ContentSwitcher)
-        
+
         if nav_id == "nav-home":
             switcher.current = "view-home"
             self.fetch_home_content()
@@ -190,14 +208,18 @@ class YTune(App):
         wishlist_list = self.query_one("#wishlist-list", ListView)
         wishlist_list.clear()
         for vid, title, artist in wishlist_data:
-            await wishlist_list.mount(TrackItem(Track(videoId=vid, title=title, artist=artist)))
+            await wishlist_list.mount(
+                TrackItem(Track(videoId=vid, title=title, artist=artist))
+            )
 
     async def refresh_history(self) -> None:
         history_data = db.get_history(self.db_conn)
         history_list = self.query_one("#history-list", ListView)
         history_list.clear()
         for vid, title, artist in history_data:
-            await history_list.mount(TrackItem(Track(videoId=vid, title=title, artist=artist)))
+            await history_list.mount(
+                TrackItem(Track(videoId=vid, title=title, artist=artist))
+            )
 
     @work(exclusive=True, thread=True)
     def fetch_home_content(self) -> None:
@@ -205,12 +227,14 @@ class YTune(App):
         home_data = self.api.get_home_data()
         self.call_from_thread(self.display_home_content, forgotten, home_data)
 
-    def display_home_content(self, forgotten, home_data) -> None:
+    def display_home_content(self, forgotten: list, home_data: list) -> None:
         forgotten_list = self.query_one("#home-forgotten", ListView)
         forgotten_list.clear()
         for vid, title, artist in forgotten[:10]:
-            forgotten_list.append(TrackItem(Track(videoId=vid, title=title, artist=artist)))
-        
+            forgotten_list.append(
+                TrackItem(Track(videoId=vid, title=title, artist=artist))
+            )
+
         start_list = self.query_one("#home-start-listening", ListView)
         start_list.clear()
         for section in home_data:
@@ -218,12 +242,14 @@ class YTune(App):
                 for item in section["contents"][:10]:
                     if "videoId" in item:
                         try:
-                            if 'artists' in item:
-                                item['artist'] = ", ".join([a['name'] for a in item['artists']])
+                            if "artists" in item:
+                                item["artist"] = ", ".join(
+                                    [a["name"] for a in item["artists"]]
+                                )
                             track = Track.model_validate(item)
                             start_list.append(TrackItem(track))
-                        except Exception:
-                            continue
+                        except Exception as e:
+                            logger.warning("Skipping malformed home item: %s", e)
 
     @on(Input.Submitted, "#search-input")
     def handle_search(self, event: Input.Submitted) -> None:
@@ -232,12 +258,12 @@ class YTune(App):
     @work(exclusive=True, thread=True)
     def perform_search(self, query: str) -> None:
         results = self.api.search_tracks(query)
-        self.call_from_thread(self.display_results, results)
+        self.post_message(self.SearchResultsReady(results))
 
-    async def display_results(self, results: list[Track]) -> None:
+    async def on_ytune_search_results_ready(self, event: SearchResultsReady) -> None:
         results_list = self.query_one("#results-list", ListView)
         results_list.clear()
-        for track in results:
+        for track in event.results:
             await results_list.mount(TrackItem(track))
 
     @on(ListView.Selected)
@@ -250,7 +276,9 @@ class YTune(App):
         if self.player:
             self.player.play(track.video_id)
         db.add_to_history(self.db_conn, track.video_id, track.title, track.artist)
-        self.query_one("#track-info", Static).update(f"♪ {track.title} — {track.artist}")
+        self.query_one("#track-info", Static).update(
+            f"♪ {track.title} — {track.artist}"
+        )
         self.query_one("#track-progress", ProgressBar).progress = 0
 
     def action_skip_track(self) -> None:
@@ -265,8 +293,12 @@ class YTune(App):
 
     def action_add_to_wishlist(self) -> None:
         if self.current_track:
-            db.add_to_wishlist(self.db_conn, self.current_track.video_id, 
-                               self.current_track.title, self.current_track.artist)
+            db.add_to_wishlist(
+                self.db_conn,
+                self.current_track.video_id,
+                self.current_track.title,
+                self.current_track.artist,
+            )
             self.notify(f"Added to Wishlist: {self.current_track.title}")
 
     def action_toggle_play(self) -> None:
@@ -276,6 +308,7 @@ class YTune(App):
     def action_focus_search(self) -> None:
         self.query_one(ContentSwitcher).current = "view-search"
         self.query_one("#search-input").focus()
+
 
 if __name__ == "__main__":
     app = YTune()

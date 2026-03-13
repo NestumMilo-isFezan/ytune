@@ -1,18 +1,20 @@
+import logging
 import sqlite3
 from pathlib import Path
-from typing import Optional, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_DB_PATH = Path.home() / ".config" / "ytune" / "ytune.db"
 
-def init_db(db_path: Optional[Path] = None):
+
+def init_db(db_path: Path | None = None) -> sqlite3.Connection:
     path = db_path or DEFAULT_DB_PATH
     if path != Path(":memory:"):
         path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     conn = sqlite3.connect(str(path), check_same_thread=False)
     cursor = conn.cursor()
-    
-    # Wishlist tracks
+
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS wishlist (
       id INTEGER PRIMARY KEY,
@@ -22,7 +24,6 @@ def init_db(db_path: Optional[Path] = None):
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Wishlist playlists
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS wishlist_playlists (
       id INTEGER PRIMARY KEY,
@@ -32,7 +33,6 @@ def init_db(db_path: Optional[Path] = None):
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # Playback history
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS history (
       id INTEGER PRIMARY KEY,
@@ -42,58 +42,87 @@ def init_db(db_path: Optional[Path] = None):
       played_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )""")
 
-    # App settings
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT
     )""")
-    
+
     conn.commit()
     return conn
 
-def add_to_wishlist(conn, video_id: str, title: str, artist: str):
+
+def add_to_wishlist(
+    conn: sqlite3.Connection, video_id: str, title: str, artist: str
+) -> None:
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT OR IGNORE INTO wishlist (video_id, title, artist) VALUES (?, ?, ?)", 
-                       (video_id, title, artist))
+        cursor.execute(
+            "INSERT OR IGNORE INTO wishlist (video_id, title, artist) VALUES (?, ?, ?)",
+            (video_id, title, artist),
+        )
         conn.commit()
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as e:
+        logger.error("Failed to add to wishlist video_id=%s: %s", video_id, e)
 
-def remove_from_wishlist(conn, video_id: str):
+
+def remove_from_wishlist(conn: sqlite3.Connection, video_id: str) -> None:
     cursor = conn.cursor()
     cursor.execute("DELETE FROM wishlist WHERE video_id = ?", (video_id,))
     conn.commit()
 
-def get_wishlist(conn) -> List[Tuple[str, str, str]]:
+
+def get_wishlist(conn: sqlite3.Connection) -> list[tuple[str, str, str]]:
     cursor = conn.cursor()
-    cursor.execute("SELECT video_id, title, artist FROM wishlist ORDER BY added_at DESC")
+    cursor.execute(
+        "SELECT video_id, title, artist FROM wishlist ORDER BY added_at DESC"
+    )
     return cursor.fetchall()
 
-def add_to_history(conn, video_id: str, title: str, artist: str):
+
+def add_to_history(
+    conn: sqlite3.Connection, video_id: str, title: str, artist: str
+) -> None:
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO history (video_id, title, artist) VALUES (?, ?, ?)", 
-                   (video_id, title, artist))
+    cursor.execute(
+        "INSERT INTO history (video_id, title, artist) VALUES (?, ?, ?)",
+        (video_id, title, artist),
+    )
     conn.commit()
 
-def get_history(conn, limit: int = 50) -> List[Tuple[str, str, str]]:
+
+def get_history(
+    conn: sqlite3.Connection, limit: int = 50
+) -> list[tuple[str, str, str]]:
     cursor = conn.cursor()
-    cursor.execute("SELECT video_id, title, artist FROM history ORDER BY played_at DESC LIMIT ?", (limit,))
+    cursor.execute(
+        "SELECT video_id, title, artist FROM history ORDER BY played_at DESC LIMIT ?",
+        (limit,),
+    )
     return cursor.fetchall()
 
-def get_forgotten_favourites(conn, days: int = 90) -> List[Tuple[str, str, str]]:
+
+def get_forgotten_favourites(
+    conn: sqlite3.Connection, days: int = 90
+) -> list[tuple[str, str, str]]:
+    if days < 0:
+        raise ValueError(f"days must be non-negative, got {days}")
+    interval = f"-{days} days"
     cursor = conn.cursor()
-    cursor.execute(f"""
-        SELECT video_id, title, artist FROM history 
-        WHERE played_at < datetime('now', '-{days} days')
+    cursor.execute(
+        """
+        SELECT video_id, title, artist FROM history
+        WHERE played_at < datetime('now', ?)
         AND video_id NOT IN (
-            SELECT video_id FROM history WHERE played_at >= datetime('now', '-{days} days')
+            SELECT video_id FROM history WHERE played_at >= datetime('now', ?)
         )
         GROUP BY video_id
         ORDER BY played_at DESC
-    """)
+        """,
+        (interval, interval),
+    )
     return cursor.fetchall()
+
 
 if __name__ == "__main__":
     init_db()

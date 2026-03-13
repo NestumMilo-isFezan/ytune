@@ -1,5 +1,5 @@
-import pytest
-from ytune.models import Track, Album, Playlist
+from ytune.models import Album, Playlist, Track
+
 
 def test_track_model_alias():
     raw_data = {

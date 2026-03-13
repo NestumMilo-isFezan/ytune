@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class Track(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -7,9 +8,9 @@ class Track(BaseModel):
     video_id: str = Field(..., alias="videoId")
     title: str
     artist: str
-    album: Optional[str] = None
-    duration: Optional[str] = None
-    thumbnail_url: Optional[str] = Field(None, alias="thumbnailUrl")
+    album: str | None = None
+    duration: str | None = None
+    thumbnail_url: str | None = Field(None, alias="thumbnailUrl")
 
 class Album(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -17,13 +18,13 @@ class Album(BaseModel):
     album_id: str = Field(..., alias="browseId")
     title: str
     artist: str
-    year: Optional[str] = None
-    thumbnail_url: Optional[str] = Field(None, alias="thumbnailUrl")
+    year: str | None = None
+    thumbnail_url: str | None = Field(None, alias="thumbnailUrl")
 
 class Playlist(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
     playlist_id: str = Field(..., alias="playlistId")
     title: str
-    count: Optional[int] = None
-    thumbnail_url: Optional[str] = Field(None, alias="thumbnailUrl")
+    count: int | None = None
+    thumbnail_url: str | None = Field(None, alias="thumbnailUrl")
